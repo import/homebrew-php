@@ -10,17 +10,11 @@ end
 
 class Php < Formula
   homepage 'http://php.net'
-  url 'http://www.php.net/get/php-5.3.10.tar.bz2/from/this/mirror'
-  md5 '816259e5ca7d0a7e943e56a3bb32b17f'
-  version '5.3.10'
+  url 'http://www.php.net/get/php-5.4.0.tar.bz2/from/this/mirror'
+  md5 '04bb6f9d71ea86ba05685439d50db074'
+  version '5.4.0'
 
   head 'https://svn.php.net/repository/php/php-src/trunk', :using => :svn
-
-  devel do
-    url 'http://downloads.php.net/stas/php-5.4.0RC8.tar.gz'
-    md5 'b659032842fcb495c6203738f2cf5e38'
-    version '5.4.0'
-  end
 
   # So PHP extensions don't report missing symbols
   skip_clean ['bin', 'sbin']
@@ -31,10 +25,8 @@ class Php < Formula
   depends_on 'icu4c' if ARGV.include? '--with-intl'
   depends_on 'imap-uw' if ARGV.include? '--with-imap'
   depends_on 'jpeg'
-  depends_on 'libevent' if ARGV.include? '--with-fpm'
   depends_on 'libxml2'
   depends_on 'mcrypt'
-  depends_on 'readline' unless ARGV.include? '--without-readline' or ARGV.build_devel? or ARGV.build_head?
   depends_on 'unixodbc' if ARGV.include? '--with-unixodbc'
 
   # Sanity Checks
@@ -58,10 +50,6 @@ class Php < Formula
     ARGV << '--without-apache' unless ARGV.include? '--without-apache'
   end
 
-  if ARGV.build_head? or ARGV.build_devel?
-    raise "Cannot apply Suhosin Patch to unstable builds" if ARGV.include? '--with-suhosin'
-  end
-
   def options
    [
      ['--with-mysql', 'Include MySQL support'],
@@ -74,15 +62,14 @@ class Php < Formula
      ['--without-apache', 'Build without shared Apache 2.0 Handler module'],
      ['--with-intl', 'Include internationalization support'],
      ['--with-imap', 'Include IMAP extension'],
-     ['--without-readline', 'Build without readline support'],
      ['--with-gmp', 'Include GMP support'],
-     ['--with-suhosin', 'Include Suhosin patch']
+#     ['--with-suhosin', 'Include Suhosin patch']     
    ]
   end
 
   def patches
     p = [DATA]
-    p << "http://download.suhosin.org/suhosin-patch-5.3.9-0.9.10.patch.gz" if ARGV.include? '--with-suhosin'
+#    p << "http://download.suhosin.org/suhosin-patch-5.3.9-0.9.10.patch.gz" if ARGV.include? '--with-suhosin'
     return p
   end
 
@@ -109,7 +96,8 @@ class Php < Formula
       "--enable-sysvmsg",
       "--enable-mbstring",
       "--enable-mbregex",
-      "--enable-zend-multibyte",
+      "--enable-zend-signals",
+      "--enable-dtrace",
       "--enable-bcmath",
       "--enable-calendar",
       "--with-openssl=/usr",
@@ -137,6 +125,8 @@ class Php < Formula
 
     if ARGV.include? '--with-fpm'
       args << "--enable-fpm"
+      args << "--with-fpm-user=_www"
+      args << "--with-fpm-group=_www"
       (var+'log').mkpath
       touch var+'log/php-fpm.log'
       (prefix+'org.php-fpm.plist').write php_fpm_startup_plist
@@ -149,10 +139,6 @@ class Php < Formula
     unless ARGV.include? '--without-apache'
       args << "--with-apxs2=/usr/sbin/apxs"
       args << "--libexecdir=#{libexec}"
-    end
-
-    unless ARGV.include? '--without-readline' or ARGV.build_devel? or ARGV.build_head?
-      args << "--with-readline=#{Formula.factory('readline').prefix}" 
     end
 
     if ARGV.include? '--with-gmp'
@@ -194,7 +180,7 @@ class Php < Formula
     end
 
     # Use libedit instead of readline for 5.4
-    args << "--with-libedit" if ARGV.build_devel? or ARGV.build_head?
+    args << "--with-libedit"
 
     system "./buildconf" if ARGV.build_head?
     system "./configure", *args
@@ -216,16 +202,17 @@ class Php < Formula
     ENV.deparallelize # parallel install fails on some systems
     system "make install"
 
-    etc.install "./php.ini-production" => "php.ini" unless File.exists? etc+"php.ini"
+    etc.install "./php.ini-development" => "php.ini" unless File.exists? etc+"php.ini"
     chmod_R 0775, lib+"php"
     system bin+"pear", "config-set", "php_ini", etc+"php.ini"
     if ARGV.include?('--with-fpm') and not File.exists? etc+"php-fpm.conf"
       etc.install "sapi/fpm/php-fpm.conf"
       inreplace etc+"php-fpm.conf" do |s|
         s.sub!(/^;?daemonize\s*=.+$/,'daemonize = no')
+        s.sub!(/^;?pm\.max_children\s*=.+$/,'pm.max_children = 50')
         s.sub!(/^;?pm\.start_servers\s*=.+$/,'pm.start_servers = 20')
-        s.sub!(/^;?pm\.min_spare_servers\s*=.+$/,'pm.min_spare_servers = 5')
-        s.sub!(/^;?pm\.max_spare_servers\s*=.+$/,'pm.max_spare_servers = 35')
+        s.sub!(/^;?pm\.min_spare_servers\s*=.+$/,'pm.min_spare_servers = 10')
+        s.sub!(/^;?pm\.max_spare_servers\s*=.+$/,'pm.max_spare_servers = 30')
       end
     end
   end
@@ -240,8 +227,6 @@ To enable PHP in Apache add the following to httpd.conf and restart Apache:
 
 The php.ini file can be found in:
     #{etc}/php.ini
-
-Development and head builds will use libedit in place of readline.
 
 If you have installed the formula with --with-fpm, to launch php-fpm on startup:
     * If this is your first install:
